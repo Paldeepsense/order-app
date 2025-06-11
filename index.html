@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Order Management</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+</head>
+<body>
+  <h1>Employee Portal</h1>
+
+  <!-- LOGIN -->
+  <div id="login-section">
+    <h3>Login</h3>
+    <input type="email" id="email" placeholder="Email"><br>
+    <input type="password" id="password" placeholder="Password"><br>
+    <button onclick="login()">Login</button>
+  </div>
+
+  <!-- LOGGED IN SECTION -->
+  <div id="main-section" style="display:none">
+    <button onclick="signOut()">Sign Out</button>
+
+    <h3>Search Clients</h3>
+    <input type="text" id="client-search" placeholder="Company Name or EIN">
+    <button onclick="searchClients()">Search</button>
+    <div id="client-results"></div>
+    <div id="add-client-section" style="display:none">
+      <h4>Add New Client</h4>
+      <input type="text" id="new-company" placeholder="Company Name"><br>
+      <input type="text" id="new-ein" placeholder="EIN"><br>
+      <button onclick="addClient()">Add Client</button>
+    </div>
+
+    <h3>All Products</h3>
+    <button onclick="loadProducts()">Show Products</button>
+    <div id="product-list"></div>
+
+    <h3>Submit Order</h3>
+    <button onclick="submitOrder()">Submit Selected Products</button>
+    <div id="order-status"></div>
+  </div>
+
+  <script>
+    const supabase = supabase.createClient('https://YOUR-PROJECT.supabase.co', 'public-anon-key');
+
+    let selectedClientId = null;
+    let selectedProducts = [];
+
+    async function login() {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const { data: { user }, error } = await supabase.auth.signInWithPassword({ email, password });
+
+      if (error) {
+        alert('Login failed: ' + error.message);
+        return;
+      }
+
+      // Check if user is an Employee in e_client_info
+      const { data: clientInfo, error: clientError } = await supabase
+        .from('e_client_info')
+        .select('*')
+        .eq('email', user.email)
+        .eq('user_type', 'Employee')
+        .single();
+
+      if (clientError || !clientInfo) {
+        alert('Access denied: not an Employee');
+        await supabase.auth.signOut();
+        return;
+      }
+
+      document.getElementById('login-section').style.display = 'none';
+      document.getElementById('main-section').style.display = 'block';
+    }
+
+    async function signOut() {
+      await supabase.auth.signOut();
+      location.reload();
+    }
+
+    async function searchClients() {
+      const term = document.getElementById('client-search').value;
+      const { data, error } = await supabase
+        .from('e_client_info')
+        .select('*')
+        .ilike('company_name', `%${term}%`)
+        .or(`EIN.ilike.%${term}%`);
+
+      const resultsDiv = document.getElementById('client-results');
+      resultsDiv.innerHTML = '';
+
+      if (data.length === 0) {
+        document.getElementById('add-client-section').style.display = 'block';
+      } else {
+        document.getElementById('add-client-section').style.display = 'none';
+        data.forEach(client => {
+          const div = document.createElement('div');
+          div.innerHTML = `
+            <b>${client.company_name}</b> (EIN: ${client.EIN})
+            <button onclick="selectClient('${client.id}')">Select</button><br><br>
+          `;
+          resultsDiv.appendChild(div);
+        });
+      }
+    }
+
+    function selectClient(clientId) {
+      selectedClientId = clientId;
+      alert("Client selected.");
+    }
+
+    async function addClient() {
+      const company = document.getElementById('new-company').value;
+      const ein = document.getElementById('new-ein').value;
+
+      const { data, error } = await supabase
+        .from('e_client_info')
+        .insert([{ company_name: company, EIN: ein }])
+        .select()
+        .single();
+
+      if (error) {
+        alert('Error adding client: ' + error.message);
+      } else {
+        selectedClientId = data.id;
+        alert("Client added and selected.");
+        document.getElementById('add-client-section').style.display = 'none';
+      }
+    }
+
+    async function loadProducts() {
+      const { data, error } = await supabase
+        .from('e_product_full_detail_view')
+        .select('*');
+
+      const productList = document.getElementById('product-list');
+      productList.innerHTML = '';
+
+      data.forEach(prod => {
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = prod.id;
+        checkbox.onchange = function () {
+          if (checkbox.checked) selectedProducts.push(prod.id);
+          else selectedProducts = selectedProducts.filter(id => id !== prod.id);
+        };
+
+        const label = document.createElement('label');
+        label.innerHTML = ` ${prod.product_name} — $${prod.price}<br>`;
+        productList.appendChild(checkbox);
+        productList.appendChild(label);
+      });
+    }
+
+    async function submitOrder() {
+      if (!selectedClientId) {
+        alert("Please select a client first.");
+        return;
+      }
+
+      if (selectedProducts.length === 0) {
+        alert("Please select at least one product.");
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('e_orders')
+        .insert([{
+          client_id: selectedClientId,
+          products: selectedProducts, // assumes you can store array of product IDs
+          orderStatus: 'pending'
+        }]);
+
+      if (error) {
+        document.getElementById('order-status').innerText = "Error: " + error.message;
+      } else {
+        document.getElementById('order-status').innerText = "Order submitted successfully.";
+        selectedProducts = [];
+        document.getElementById('product-list').innerHTML = '';
+      }
+    }
+  </script>
+</body>
+</html>
