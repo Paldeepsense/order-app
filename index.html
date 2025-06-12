@@ -26,6 +26,10 @@
             margin-bottom: 10px;
             background-color: #f9f9f9;
         }
+        .loading {
+            display: none;
+            color: blue;
+        }
     </style>
 </head>
 <body>
@@ -39,6 +43,8 @@
         <p id="error-message" style="color: red;"></p>
     </div>
 
+    <div class="loading" id="loading">Loading...</div>
+
     <div class="product-list">
         <h2>Products</h2>
         <div id="products"></div>
@@ -47,12 +53,12 @@
 </div>
 
 <script>
-    // Supabase URL and Key (Replace with your credentials)
+    // Supabase URL and Key (Replace with your credentials securely in production)
     const supabaseUrl = 'https://jdcullskoqokarclkbru.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkY3VsbHNrb3Fva2FyY2xrYnJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg2NDA1NjQsImV4cCI6MjA2NDIxNjU2NH0.ZLB_MaYpionvvXiTBoWGJg7iwi4SrSs5KCV6MOEPg1o';
     const supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
-    // Handle login
+    // Elements
     const loginButton = document.getElementById('loginButton');
     const emailInput = document.getElementById('email');
     const passwordInput = document.getElementById('password');
@@ -60,15 +66,23 @@
     const productList = document.querySelector('.product-list');
     const errorMessage = document.getElementById('error-message');
     const logoutButton = document.getElementById('logoutButton');
+    const loading = document.getElementById('loading');
 
+    // Handle login
     loginButton.addEventListener('click', async () => {
         const email = emailInput.value;
         const password = passwordInput.value;
+
+        // Show loading state while waiting for login
+        loading.style.display = 'block';
+        errorMessage.textContent = '';
 
         const { user, error } = await supabase.auth.signInWithPassword({
             email,
             password,
         });
+
+        loading.style.display = 'none'; // Hide loading state
 
         if (error) {
             errorMessage.textContent = 'Error: ' + error.message;
@@ -81,9 +95,13 @@
 
     // Fetch products after successful login
     async function fetchProducts() {
+        loading.style.display = 'block'; // Show loading state for fetching products
+
         const { data, error } = await supabase
             .from('e_product_full_detail_view')
             .select('*');
+
+        loading.style.display = 'none'; // Hide loading state
 
         if (error) {
             console.error('Error fetching products:', error);
@@ -112,15 +130,22 @@
         productList.style.display = 'none';
     });
 
-    // Initial state
-    if (supabase.auth.user()) {
-        loginForm.style.display = 'none';
-        productList.style.display = 'block';
-        fetchProducts();
-    } else {
-        loginForm.style.display = 'block';
-        productList.style.display = 'none';
+    // Check if user is already logged in (persistent authentication)
+    async function checkAuth() {
+        const user = supabase.auth.user();
+
+        if (user) {
+            loginForm.style.display = 'none';
+            productList.style.display = 'block';
+            fetchProducts();
+        } else {
+            loginForm.style.display = 'block';
+            productList.style.display = 'none';
+        }
     }
+
+    // Initialize authentication check on page load
+    checkAuth();
 </script>
 
 </body>
